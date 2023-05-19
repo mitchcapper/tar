@@ -16,12 +16,23 @@
    with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <system.h>
-
 #if HAVE_SYS_MTIO_H
 # include <sys/ioctl.h>
 # include <sys/mtio.h>
 #endif
 
+#include "execute.h"
+#include "spawn.h"
+#include <sys/wait.h>
+//rather than manually include the entire windows header lets just define these.
+#ifdef _WIN32
+#ifndef DWORD
+typedef unsigned long       DWORD;
+#endif
+#ifndef HANDLE
+typedef void* HANDLE;
+#endif // !HANDLE
+#endif
 #include "common.h"
 #include <priv-set.h>
 #include <rmt.h>
@@ -32,6 +43,7 @@
 
 bool dev_null_output;
 
+#ifndef _WIN32
 static _Noreturn void
 xexec (const char *cmd)
 {
@@ -45,7 +57,7 @@ xexec (const char *cmd)
   execv ("/bin/sh", argv);
   exec_fatal (cmd);
 }
-
+#endif // !_WIN32
 /* True if the archive is seekable via ioctl and MTIOCTOP,
    or if it is not known whether it is seekable.
    False if it is known to be not seekable.  */
@@ -246,8 +258,10 @@ sys_spawn_shell (void)
 {
   pid_t child;
   const char *shell = getenv ("SHELL");
+
   if (! shell)
     shell = "/bin/sh";
+#ifndef _WIN32
   child = xfork ();
   if (child == 0)
     {
@@ -265,6 +279,20 @@ sys_spawn_shell (void)
 	    break;
 	  }
     }
+#else
+
+  char *arg_arr[3];
+  arg_arr[0] = "-sh";
+  arg_arr[1] =  "-i";
+  arg_arr[2] =  NULL;
+
+
+  errno = execute(shell,shell,(void*)arg_arr,NULL,false,false,false,false,true,false,NULL);
+  if (errno != EINTR)
+	  {
+	    waitpid_error (shell);
+	  }
+#endif
 }
 
 bool
@@ -366,6 +394,7 @@ sys_child_open_for_compress (void)
 
   signal (SIGPIPE, SIG_IGN);
   xpipe (parent_pipe);
+#ifndef _WIN32
   child_pid = xfork ();
 
   if (child_pid > 0)
@@ -385,6 +414,8 @@ sys_child_open_for_compress (void)
   xdup2 (parent_pipe[PREAD], STDIN_FILENO);
   xclose (parent_pipe[PWRITE]);
 
+#endif
+
   /* Check if we need a grandchild tar.  This happens only if either:
      a) the file is to be accessed by rmt: compressor doesn't know how;
      b) the file is not a plain file.  */
@@ -399,8 +430,8 @@ sys_child_open_for_compress (void)
 	 compressor.  */
       if (strcmp (archive_name_array[0], "-"))
 	{
-	  archive = creat (archive_name_array[0], MODE_RW);
-	  if (archive < 0)
+		  archive_child = creat(archive_name_array[0], MODE_RW);
+		  if (archive_child < 0)
 	    {
 	      int saved_errno = errno;
 
@@ -409,12 +440,56 @@ sys_child_open_for_compress (void)
 	      errno = saved_errno;
 	      open_fatal (archive_name_array[0]);
 	    }
-	  xdup2 (archive, STDOUT_FILENO);
+#ifndef _WIN32
+		  xdup2(archive_child, STDOUT_FILENO);
+#endif
 	}
       priv_set_restore_linkdir ();
-      xexec (use_compress_program_option);
-    }
+#ifdef _WIN32
+	  char* argv[2];
 
+	  argv[0] = (char*)use_compress_program_option;//we cant use sh in windows to execute the command
+	  argv[1] = NULL;
+	  archive = parent_pipe[PWRITE];
+	  /*int fd[2];
+	  fd[1] = archive;
+	  fd[0] = archive_child;*/
+	  //return create_pipe_out(_("tar (child)"),"/bin/sh",argv,NULL,NULL,NULL,true,true,fd);
+	  int new_pid=0;
+	  posix_spawn_file_actions_t action;
+	  //posix_spawnattr_t attr; //dont think any flags are relaly supported other than process group looking through gnu spawni.c code
+	  posix_spawn_file_actions_init(&action);
+	  //posix_spawnattr_init(&attr);
+	  //posix_spawnattr_setsigmask(&attr, 0);
+	  //posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGDEF);
+	  
+//	  dlog("OK so tars write to child pipe is: %d (%p) and the childs read end of that pipe is: %d (%p)  the child stdout is: %d", parent_pipe[PWRITE],_get_osfhandle(parent_pipe[PWRITE]),parent_pipe[PREAD], _get_osfhandle(parent_pipe[PREAD]), archive_child);
+  posix_spawn_file_actions_adddup2(&action, parent_pipe[PREAD], STDIN_FILENO);
+  posix_spawn_file_actions_addclose(&action, parent_pipe[PWRITE]);
+  //posix_spawn_file_actions_addclose(&action, 0);
+  //posix_spawn_file_actions_addclose(&action, 1);
+  posix_spawn_file_actions_adddup2(&action, archive_child, STDOUT_FILENO);
+  //dlog("Before spawn parent_pipe[PREAD] %d", parent_pipe[PREAD]);
+  int spawn_res = posix_spawnp(&new_pid, use_compress_program_option, &action,NULL,argv,NULL);
+  //dlog("After spawn parent_pipe[PREAD] %d", parent_pipe[PREAD]);
+  char* errMsg = "";
+  char* errMsg2 = "";
+  if (spawn_res != 0) {
+	  errMsg = strdup( strerror(errno));
+	  errMsg2 = strdup(strerror(spawn_res));
+  }
+  //dlog("child proc spawned pid is: %d and spawn res: %d err msg: %s -- %s", new_pid, spawn_res, errMsg, errMsg2);
+  xclose(parent_pipe[PREAD]);
+  //int pid= create_pipe_bidi(_("tar (child)"), use_compress_program_option,argv,NULL,true,true,true,fd);
+  return new_pid;
+  #else
+      xexec (use_compress_program_option);
+#endif
+    }
+#ifdef _WIN32
+  printf("Grandchild fork not implemented yet for WIN32 but prolly can");
+  exit(1);
+#else
   /* We do need a grandchild tar.  */
 
   xpipe (child_pipe);
@@ -497,10 +572,15 @@ sys_child_open_for_compress (void)
     }
 
   wait_for_grandchild (grandchild_pid);
+  #endif
 }
-
+#ifndef _WIN32
 static void
 run_decompress_program (void)
+#else
+static int
+run_decompress_program (posix_spawn_file_actions_t * action, int fd_close_on_success)
+#endif
 {
   int i;
   const char *p, *prog = NULL;
@@ -525,7 +605,23 @@ run_decompress_program (void)
 	       ws.ws_wordc * sizeof *ws.ws_wordv);
       ws.ws_wordv[ws.ws_wordc] = (char *) "-d";
       prog = p;
+#ifndef _WIN32
       execvp (ws.ws_wordv[0], ws.ws_wordv);
+#else
+	  int new_pid = 0;
+	  int spawn_res = posix_spawnp(&new_pid, ws.ws_wordv[0], action, NULL, ws.ws_wordv, NULL);
+	  char* errMsg = "";
+	  char* errMsg2 = "";
+	  if (spawn_res != 0) {
+		  errMsg = strdup(strerror(errno));
+		  errMsg2 = strdup(strerror(spawn_res));
+	  }
+	  //dlog("decompress attempt at child proc spawned pid is: %d and spawn res: %d err msg: %s -- %s", new_pid, spawn_res, errMsg, errMsg2);
+	  if (spawn_res == 0) {
+		  xclose(fd_close_on_success);
+		  return new_pid;
+	  }
+#endif // !_WIN32
       ws.ws_wordv[ws.ws_wordc] = NULL;
     }
   if (!prog)
@@ -541,8 +637,9 @@ sys_child_open_for_uncompress (void)
   int child_pipe[2];
   pid_t grandchild_pid;
   pid_t child_pid;
-
   xpipe (parent_pipe);
+#ifndef _WIN32
+
   child_pid = xfork ();
 
   if (child_pid > 0)
@@ -561,7 +658,7 @@ sys_child_open_for_uncompress (void)
 
   xdup2 (parent_pipe[PWRITE], STDOUT_FILENO);
   xclose (parent_pipe[PREAD]);
-
+#endif
   /* Check if we need a grandchild tar.  This happens only if either:
      a) we're reading stdin: to force unblocking;
      b) the file is to be accessed by rmt: compressor doesn't know how;
@@ -574,14 +671,35 @@ sys_child_open_for_uncompress (void)
       /* We don't need a grandchild tar.  Open the archive and launch the
 	 uncompressor.  */
 
-      archive = open (archive_name_array[0], O_RDONLY | O_BINARY, MODE_RW);
-      if (archive < 0)
+      archive_child = open (archive_name_array[0], O_RDONLY | O_BINARY, MODE_RW);
+      if (archive_child < 0)
 	open_fatal (archive_name_array[0]);
-      xdup2 (archive, STDIN_FILENO);
-      priv_set_restore_linkdir ();
-      run_decompress_program ();
-    }
+#ifndef _WIN32
+	  xdup2 (archive_child, STDIN_FILENO);
+#else
+	  archive = parent_pipe[PREAD];
+	  posix_spawn_file_actions_t action;
+	  posix_spawn_file_actions_init(&action);
 
+	  //dlog("OK so tars write to child pipe is: %d (%p) and the childs read end of that pipe is: %d (%p)  the child stdout is: %d", parent_pipe[PWRITE], _get_osfhandle(parent_pipe[PWRITE]), parent_pipe[PREAD], _get_osfhandle(parent_pipe[PREAD]), archive_child);
+	  posix_spawn_file_actions_adddup2(&action, parent_pipe[PWRITE], STDOUT_FILENO);
+	  posix_spawn_file_actions_addclose(&action, parent_pipe[PREAD]);
+	  posix_spawn_file_actions_adddup2(&action, archive_child, STDIN_FILENO);
+#endif
+      priv_set_restore_linkdir ();
+#ifdef _WIN32
+
+	  return run_decompress_program(&action, parent_pipe[PWRITE]);
+#else
+      run_decompress_program ();
+#endif // _WIN32
+
+		  
+    }
+#ifdef _WIN32
+  printf("Can't do grandchildren yet 2 win32 could potentially if we needed to");
+  exit(1);
+#else
   /* We do need a grandchild tar.  */
 
   xpipe (child_pipe);
@@ -642,9 +760,10 @@ sys_child_open_for_uncompress (void)
   xclose (STDOUT_FILENO);
 
   wait_for_grandchild (grandchild_pid);
+#endif
 }
 
-
+
 
 static void
 dec_to_env (char const *envar, uintmax_t num)
@@ -752,6 +871,7 @@ sys_exec_command (char *file_name, char typechar, struct tar_stat_info *st)
   int p[2];
 
   xpipe (p);
+  #ifndef _WIN32
   pipe_handler = signal (SIGPIPE, SIG_IGN);
   global_pid = xfork ();
 
@@ -769,6 +889,24 @@ sys_exec_command (char *file_name, char typechar, struct tar_stat_info *st)
 
   priv_set_restore_linkdir ();
   xexec (to_command_option);
+#else
+  posix_spawn_file_actions_t action;
+  posix_spawn_file_actions_init(&action);
+  posix_spawn_file_actions_addclose(&action, p[PWRITE]);
+  posix_spawn_file_actions_adddup2(&action, p[PREAD], STDIN_FILENO);
+  stat_to_env(file_name, typechar, st); //yeah we are poluting our env but it looks like these are not used elsewhere, easier than having to o a ful lenv copy + add
+  priv_set_restore_linkdir();
+  int new_pid = 0;
+  char* argv[2];
+
+  argv[0] = (char*)to_command_option;//we cant use sh in windows to execute the command
+  argv[1] = NULL;
+  int spawn_res = posix_spawnp(&new_pid, to_command_option, &action, NULL, argv, NULL);
+  if (spawn_res != 0)
+	  exec_fatal(to_command_option);
+  xclose(p[PREAD]);
+  return p[PWRITE];
+  #endif
 }
 
 void
@@ -813,14 +951,43 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
   static void (*saved_handler) (int sig);
 
   xpipe (p);
+ #ifndef _WIN32
   saved_handler = signal (SIGPIPE, SIG_IGN);
 
   pid_t pid = xfork ();
 
-  if (pid != 0)
-    {
-      /* Master */
+  if (pid == 0)
+  {//moved child up so we can reuse most of it for the win version, yeah poluting our own env
+	  /* Child */
+#else
+  posix_spawn_file_actions_t action;
+  posix_spawn_file_actions_init(&action);
+  posix_spawn_file_actions_adddup2(&action, p[PWRITE], p[PWRITE]);
+  posix_spawn_file_actions_addclose(&action, p[PREAD]);
+#endif
+	  setenv("TAR_VERSION", PACKAGE_VERSION, 1);
+	  setenv("TAR_ARCHIVE", *archive_name, 1);
+	  setenv("TAR_VOLUME", STRINGIFY_BIGINT(volume_number, uintbuf), 1);
+	  setenv("TAR_BLOCKING_FACTOR",
+		  STRINGIFY_BIGINT(blocking_factor, uintbuf), 1);
+	  setenv("TAR_SUBCOMMAND", subcommand_string(subcommand_option), 1);
+	  setenv("TAR_FORMAT",
+		  archive_format_string(current_format == DEFAULT_FORMAT ?
+			  archive_format : current_format), 1);
+	  setenv("TAR_FD", STRINGIFY_BIGINT(p[PWRITE], uintbuf), 1);
 
+	  priv_set_restore_linkdir();
+#ifndef _WIN32
+	  xclose(p[PREAD]);
+	  xexec(info_script_option);
+  }
+
+      /* Master */
+#else
+	int spawn_res = posix_spawnp(&pid, info_script_option, &action, NULL, NULL, NULL);
+	if (spawn_res != 0)
+		exec_fatal(info_script_option);
+#endif
       int status;
       char *buf = NULL;
       size_t size = 0;
@@ -848,7 +1015,6 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
 	  close_error (info_script_option);
 	  return -1;
 	}
-
       while (waitpid (pid, &status, 0) < 0)
 	if (errno != EINTR)
 	  {
@@ -859,23 +1025,12 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
 
       signal (SIGPIPE, saved_handler);
       return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
-    }
 
-  /* Child */
-  str_to_env ("TAR_VERSION", PACKAGE_VERSION);
-  str_to_env ("TAR_ARCHIVE", *archive_name);
-  dec_to_env ("TAR_VOLUME", volume_number);
-  dec_to_env ("TAR_BLOCKING_FACTOR", blocking_factor);
-  setenv ("TAR_SUBCOMMAND", subcommand_string (subcommand_option), 1);
-  setenv ("TAR_FORMAT",
-	  archive_format_string (current_format == DEFAULT_FORMAT ?
-				 archive_format : current_format), 1);
-  dec_to_env ("TAR_FD", p[PWRITE]);
-
-  xclose (p[PREAD]);
-
-  priv_set_restore_linkdir ();
-  xexec (info_script_option);
+  setenv ("TAR_VERSION", PACKAGE_VERSION, 1);
+  setenv ("TAR_ARCHIVE", *archive_name, 1);
+  setenv ("TAR_VOLUME", STRINGIFY_BIGINT (volume_number, uintbuf), 1);
+  setenv ("TAR_BLOCKING_FACTOR",
+  setenv ("TAR_FD", STRINGIFY_BIGINT (p[PWRITE], uintbuf), 1);
 }
 
 void
@@ -883,24 +1038,16 @@ sys_exec_checkpoint_script (const char *script_name,
 			    const char *archive_name,
 			    intmax_t checkpoint_number)
 {
+  #ifdef _WIN32
+  posix_spawn_file_actions_t action;
+  posix_spawn_file_actions_init(&action);
+#else
   pid_t pid = xfork ();
 
-  if (pid != 0)
-    {
-      /* Master */
-
-      int status;
-
-      while (waitpid (pid, &status, 0) < 0)
-	if (errno != EINTR)
+  if (pid == 0) //child first to minimize win32 dupe code and yes poluting our env
+      while (waitpid (pid, &status, 0) == -1)
 	  {
-	    waitpid_error (script_name);
-	    break;
-	  }
-
-      return;
-    }
-
+#endif
   /* Child */
   str_to_env ("TAR_VERSION", PACKAGE_VERSION);
   str_to_env ("TAR_ARCHIVE", archive_name);
@@ -911,7 +1058,25 @@ sys_exec_checkpoint_script (const char *script_name,
 	      archive_format_string (current_format == DEFAULT_FORMAT
 				     ? archive_format : current_format));
   priv_set_restore_linkdir ();
+#ifdef _WIN32
+	  int spawn_res = posix_spawnp(&pid, script_name, &action, NULL, NULL, NULL);
+	  if (spawn_res != 0)
+		  exec_fatal(script_name);
+#else
   xexec (script_name);
+}
+#endif
+      /* Master */
+
+      int status;
+
+      while (waitpid (pid, &status, 0) == -1)
+	if (errno != EINTR)
+	  {
+	    waitpid_error (script_name);
+	    break;
+	  }
+  
 }
 
 bool
