@@ -16,12 +16,18 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
-
+#define _WINNT_
+#define _WINSOCK2API_
+#define _WINSOCKAPI_
 #include <system.h>
 #include "common.h"
 #include "wordsplit.h"
 #include <sys/ioctl.h>
+#ifndef _WIN32
 #include <termios.h>
+#else
+#include <sys/time.h>
+#endif
 #include "fprintftime.h"
 #include <signal.h>
 
@@ -429,7 +435,10 @@ run_checkpoint_actions (bool do_write)
 	case cop_wait:
 	  {
 	    int n;
+#ifndef _WIN32
 	    sigwait (&sigs, &n);
+#endif // !_WIN32
+
 	  }
 	}
     }

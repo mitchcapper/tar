@@ -20,6 +20,16 @@
 /* Declare the GNU tar archive format.  */
 #include "tar.h"
 
+#ifdef _WIN32
+#  define geteuid() (-1)
+#  define getegid() (-1)
+#  define getgid() (-1)
+#  define getuid() (-1)
+#define _WINNT_
+#define _WINSOCK2API_
+#define _WINSOCKAPI_
+#endif
+
 /* The checksum field is filled with this while the checksum is computed.  */
 #define CHKBLANKS	"        "	/* 8 blanks, no null */
 
@@ -351,6 +361,11 @@ GLOBAL bool posixly_correct;
 
 /* File descriptor for archive file.  */
 GLOBAL int archive;
+#ifndef _WIN32
+#define archive_child archive
+#else
+GLOBAL int archive_child;
+#endif
 
 /* Nonzero when outputting to /dev/null.  */
 GLOBAL bool dev_null_output;
@@ -749,7 +764,9 @@ void write_error_details (char const *name, size_t status, size_t size);
 _Noreturn void write_fatal (char const *name);
 _Noreturn void write_fatal_details (char const *name, ssize_t status, size_t size);
 
+#ifndef _WIN32
 pid_t xfork (void);
+#endif // !_WIN32
 void xpipe (int fd[2]);
 
 void *page_aligned_alloc (void **ptr, size_t size);

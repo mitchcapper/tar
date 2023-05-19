@@ -25,8 +25,11 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#ifndef _WIN32
 #include <pwd.h>
+#else
 #include <glob.h>
+#endif
 
 #if ENABLE_NLS
 # include <gettext.h>
@@ -1692,7 +1695,8 @@ wordsplit_trimws (struct wordsplit *wsp)
   wsnode_nullelim (wsp);
   return 0;
 }
-
+#ifndef _WIN32
+//Note could do for win32 just look at which.exe's tilde
 static int
 wordsplit_tildexpand (struct wordsplit *wsp)
 {
@@ -1765,7 +1769,7 @@ wordsplit_tildexpand (struct wordsplit *wsp)
   free (uname);
   return 0;
 }
-
+#endif
 static int
 isglob (const char *s, int l)
 {
@@ -2307,8 +2311,10 @@ static struct exptab exptab[] = {
     wordsplit_cmdexp },
   { N_("coalesce list"),        0,                EXPOPT_NEG|EXPOPT_COALESCE,
     NULL },
+#ifndef _WIN32
   { N_("tilde expansion"),      WRDSF_PATHEXPAND, 0,
     wordsplit_tildexpand },
+#endif
   { N_("variable expansion"),   WRDSF_NOVAR,      EXPOPT_NEG,
     wordsplit_varexp },
   { N_("quote removal"),        0,                EXPOPT_NEG,

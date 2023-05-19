@@ -1033,11 +1033,15 @@ decode_signal (const char *name)
     char const *name;
     int signo;
   } const sigtab[] = {
+#ifndef _WIN32
     { "USR1", SIGUSR1 },
     { "USR2", SIGUSR2 },
     { "HUP", SIGHUP },
     { "INT", SIGINT },
     { "QUIT", SIGQUIT }
+#else
+    { "INT", SIGINT }
+#endif
   };
   struct sigtab const *p;
   char const *s = name;
@@ -2806,8 +2810,9 @@ main (int argc, char **argv)
   archive_names = 0;
 
   /* System V fork+wait does not work if SIGCHLD is ignored.  */
+#ifndef _WIN32
   signal (SIGCHLD, SIG_DFL);
-
+#endif
   /* Try to disable the ability to unlink a directory.  */
   priv_set_remove_linkdir ();
 

@@ -473,6 +473,7 @@ static gid_t cached_no_such_gid;
 void
 uid_to_uname (uid_t uid, char **uname)
 {
+#ifndef _WIN32
   struct passwd *passwd;
 
   if (uid != 0 && uid == cached_no_such_uid)
@@ -497,12 +498,16 @@ uid_to_uname (uid_t uid, char **uname)
 	}
     }
   *uname = xstrdup (cached_uname);
+#else
+  *uname = xstrdup ("");
+#endif
 }
 
 /* Given GID, find the corresponding GNAME.  */
 void
 gid_to_gname (gid_t gid, char **gname)
 {
+#ifndef _WIN32
   struct group *group;
 
   if (gid != 0 && gid == cached_no_such_gid)
@@ -527,12 +532,16 @@ gid_to_gname (gid_t gid, char **gname)
 	}
     }
   *gname = xstrdup (cached_gname);
+#else
+  *gname = xstrdup ("");
+#endif
 }
 
 /* Given UNAME, set the corresponding UID and return 1, or else, return 0.  */
 int
 uname_to_uid (char const *uname, uid_t *uidp)
 {
+#ifndef _WIN32
   struct passwd *passwd;
 
   if (cached_no_such_uname
@@ -557,12 +566,16 @@ uname_to_uid (char const *uname, uid_t *uidp)
     }
   *uidp = cached_uid;
   return 1;
+#else
+  return 0;
+#endif
 }
 
 /* Given GNAME, set the corresponding GID and return 1, or else, return 0.  */
 int
 gname_to_gid (char const *gname, gid_t *gidp)
 {
+#ifndef _WIN32
   struct group *group;
 
   if (cached_no_such_gname
@@ -587,6 +600,9 @@ gname_to_gid (char const *gname, gid_t *gidp)
     }
   *gidp = cached_gid;
   return 1;
+#else
+  return 0;
+#endif
 }
 
 
