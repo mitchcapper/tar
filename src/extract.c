@@ -1623,6 +1623,9 @@ extract_symlink (char *file_name, MAYBE_UNUSED char typeflag)
 }
 
 #if S_IFCHR || S_IFBLK
+#ifndef S_IFBLK
+# define S_IFBLK 0
+#endif
 static bool
 extract_node (char *file_name, char typeflag)
 {

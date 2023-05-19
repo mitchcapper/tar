@@ -20,6 +20,16 @@
 /* Declare the GNU tar archive format.  */
 #include "tar.h"
 
+#ifdef _WIN32
+#  define geteuid() (-1)
+#  define getegid() (-1)
+#  define getgid() (-1)
+#  define getuid() (-1)
+#define _WINNT_
+#define _WINSOCK2API_
+#define _WINSOCKAPI_
+#endif
+
 /* Some constants from POSIX are given names.  */
 enum
   {
@@ -414,7 +424,11 @@ extern enum access_mode access_mode;
 
 /* File descriptor for archive file.  */
 extern int archive;
-
+#ifndef _WIN32
+#define archive_child archive
+#else
+extern int archive_child;
+#endif
 /* Timestamps: */
 extern struct timespec start_time;        /* when we started execution */
 extern struct timespec volume_start_time; /* when the current volume was
@@ -753,7 +767,9 @@ void file_removed_diag (const char *name, bool top_level,
 			void (*diagfn) (char const *name));
 _Noreturn void write_fatal (char const *name);
 
+#ifndef _WIN32
 pid_t xfork (void);
+#endif // !_WIN32
 void xpipe (int fd[2]);
 
 int set_file_atime (int fd, int parentfd, char const *file,

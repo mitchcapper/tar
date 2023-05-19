@@ -1206,6 +1206,7 @@ file_removed_diag (const char *name, bool top_level,
     diagfn (name);
 }
 
+#ifndef _WIN32
 /* Fork, aborting if unsuccessful.  */
 pid_t
 xfork (void)
@@ -1215,6 +1216,7 @@ xfork (void)
     call_arg_fatal ("fork", _("child process"));
   return p;
 }
+#endif
 
 /* Create a pipe, aborting if unsuccessful.  */
 void

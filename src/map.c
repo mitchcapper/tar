@@ -21,7 +21,9 @@
 #include "common.h"
 #include "wordsplit.h"
 #include <hash.h>
+#ifndef _WIN32
 #include <pwd.h>
+#endif
 
 struct mapentry
 {
@@ -187,8 +189,12 @@ static Hash_table *owner_map;
 static uintmax_t
 name_to_uid (char const *name)
 {
+#ifndef _WIN32
   struct passwd *pw = getpwnam (name);
   return pw ? pw->pw_uid : UINTMAX_MAX;
+#else
+  return UINTMAX_MAX;
+#endif
 }
 
 void
@@ -228,8 +234,12 @@ static Hash_table *group_map;
 static uintmax_t
 name_to_gid (char const *name)
 {
+#ifndef _WIN32
   struct group *gr = getgrnam (name);
   return gr ? gr->gr_gid : UINTMAX_MAX;
+#else
+  return UINTMAX_MAX;
+#endif
 }
 
 void
