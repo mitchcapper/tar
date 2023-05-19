@@ -1100,11 +1100,15 @@ decode_signal (const char *name)
     char name[sizeof "USR1"];
     int signo;
   } const sigtab[] = {
+#ifndef _WIN32
     { "USR1", SIGUSR1 },
     { "USR2", SIGUSR2 },
     { "HUP", SIGHUP },
     { "INT", SIGINT },
     { "QUIT", SIGQUIT }
+#else
+    { "INT", SIGINT }
+#endif
   };
   enum { nsigtab = sizeof sigtab / sizeof *sigtab };
   char const *s = name;
@@ -2853,8 +2857,9 @@ main (int argc, char **argv)
 		     " of the standard file descriptors"));
 
   /* System V fork+wait does not work if SIGCHLD is ignored.  */
+#ifndef _WIN32
   signal (SIGCHLD, SIG_DFL);
-
+#endif
   /* Try to disable the ability to unlink a directory.  */
   priv_set_remove_linkdir ();
 
