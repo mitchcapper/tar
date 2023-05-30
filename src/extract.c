@@ -1202,7 +1202,7 @@ open_output_file (char const *file_name, int typeflag, mode_t mode,
   /* If O_NOFOLLOW is needed but does not work, check for a symlink
      separately.  There's a race condition, but that cannot be avoided
      on hosts lacking O_NOFOLLOW.  */
-  if (! HAVE_WORKING_O_NOFOLLOW
+  if (! HAVE_WORKING_O_NOFOLLOW && ! _WIN32
       && overwriting_old_files && ! dereference_option)
     {
       char buf[1];
@@ -1560,7 +1560,7 @@ extract_link (char *file_name, MAYBE_UNUSED int typeflag)
 static int
 extract_symlink (char *file_name, MAYBE_UNUSED int typeflag)
 {
-#ifdef HAVE_SYMLINK
+#if defined HAVE_SYMLINK || defined REPLACE_SYMLINK
   bool interdir_made = false;
 
   if (! absolute_names_option

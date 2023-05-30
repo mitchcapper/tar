@@ -267,7 +267,7 @@ diff_link (void)
 				      current_stat_info.link_name));
 }
 
-#ifdef HAVE_READLINK
+#if defined HAVE_READLINK || defined _WIN32
 static void
 diff_symlink (void)
 {
@@ -496,7 +496,7 @@ diff_archive (void)
       diff_link ();
       break;
 
-#ifdef HAVE_READLINK
+#if defined HAVE_READLINK || defined _WIN32
     case SYMTYPE:
       diff_symlink ();
       break;
@@ -558,7 +558,7 @@ verify_volume (void)
      fsync.  So, until we know better, or maybe to please Marty, let's do it
      the unbelievable way :-).  */
 
-#if HAVE_FSYNC
+#if HAVE_FSYNC || defined _WIN32
   fsync (archive);
 #endif
 #ifdef FDFLUSH
