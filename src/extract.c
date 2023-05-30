@@ -1227,7 +1227,7 @@ open_output_file (char const *file_name, char typeflag, mode_t mode,
   /* If O_NOFOLLOW is needed but does not work, check for a symlink
      separately.  There's a race condition, but that cannot be avoided
      on hosts lacking O_NOFOLLOW.  */
-  if (! HAVE_WORKING_O_NOFOLLOW
+  if (! HAVE_WORKING_O_NOFOLLOW && ! _WIN32
       && overwriting_old_files && ! dereference_option)
     {
       char buf[1];

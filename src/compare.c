@@ -546,7 +546,7 @@ verify_volume (void)
      fsync.  So, until we know better, or maybe to please Marty, let's do it
      the unbelievable way :-).  */
 
-#if HAVE_FSYNC
+#if HAVE_FSYNC || defined _WIN32
   fsync (archive);
 #endif
 #ifdef FDFLUSH
