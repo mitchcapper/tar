@@ -185,7 +185,7 @@ confirm (const char *message_action, const char *message_name)
     {
       if (archive == 0 || stdin_used_by)
 	{
-	  confirm_file = fopen (TTY_NAME, "r");
+	  confirm_file = fopen (TTY_NAME, "rb");
 	  if (! confirm_file)
 	    open_fatal (TTY_NAME);
 	}
@@ -2838,6 +2838,10 @@ main (int argc, char **argv)
   set_program_name (argv[0]);
 #ifdef ENABLE_ERROR_PRINT_PROGNAME
   error_print_progname = tar_print_progname;
+#endif
+#ifdef _WIN32
+  _fmode = _O_BINARY;
+  SET_BINARY_MODE(STDIN_FILENO);
 #endif
   setlocale (LC_ALL, "");
   bindtextdomain (PACKAGE, LOCALEDIR);
