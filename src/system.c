@@ -173,7 +173,18 @@ sys_exec_setmtime_script (const char *script_name,
   FATAL_ERROR ((0, 0, _("--set-mtime-command not implemented on this platform")));
 }
 #else
+#ifdef _WIN32
 
+int
+sys_exec_setmtime_script (const char *script_name,
+			  int dirfd,
+			  const char *file_name,
+			  const char *fmt,
+			  struct timespec *ts)
+{
+  FATAL_ERROR ((0, 0, _("--set-mtime-command not implemented on this platform")));
+}
+#endif
 extern union block *record_start; /* FIXME */
 
 bool
@@ -1084,7 +1095,7 @@ sys_exec_checkpoint_script (const char *script_name,
 	  }
   
 }
-
+#ifndef _WIN32
 int
 sys_exec_setmtime_script (const char *script_name,
 			  int dirfd,
@@ -1246,5 +1257,5 @@ sys_exec_setmtime_script (const char *script_name,
 
   return rc;
 }
-
+#endif
 #endif /* not MSDOS */
