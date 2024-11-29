@@ -53,6 +53,9 @@ static idx_t short_read_slop;	/* excess bytes at end of short read */
    module.  However, this cannot be done yet.  The cleanup continues!  */
 
 int archive;
+#ifdef _WIN32
+int archive_child;
+#endif
 struct timespec start_time;
 struct timespec volume_start_time;
 struct tar_stat_info current_stat_info;

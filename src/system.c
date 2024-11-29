@@ -40,6 +40,12 @@ typedef void* HANDLE;
 #include <wordsplit.h>
 #include <poll.h>
 #include <parse-datetime.h>
+#include "config.h"
+#ifndef HAVE_WAITPID
+#ifdef _GL_SYS_WAIT_H
+#define HAVE_WAITPID 1
+#endif
+#endif
 
 bool dev_null_output;
 
@@ -87,7 +93,7 @@ mtioseek (bool count_files, off_t count)
   return false;
 }
 
-#if !HAVE_WAITPID /* MingW, MSVC 14.  */
+#ifndef HAVE_WAITPID /* MingW, MSVC 14.  */
 
 bool
 sys_get_archive_stat (void)
@@ -181,7 +187,7 @@ sys_exec_setmtime_script (const char *script_name,
 #else
 #ifdef _WIN32
 
-int
+bool
 sys_exec_setmtime_script (const char *script_name,
 			  int dirfd,
 			  const char *file_name,
@@ -299,7 +305,7 @@ sys_spawn_shell (void)
   arg_arr[2] =  NULL;
 
 
-  errno = execute(shell,shell,(void*)arg_arr,NULL,false,false,false,false,true,false,NULL);
+  errno = execute(shell,shell,(void*)arg_arr,NULL,NULL,false,false,false,false,true,false,NULL);
   if (errno != EINTR)
 	  {
 	    waitpid_error (shell);
@@ -467,7 +473,7 @@ sys_child_open_for_compress (void)
 	  fd[1] = archive;
 	  fd[0] = archive_child;*/
 	  //return create_pipe_out(_("tar (child)"),"/bin/sh",argv,NULL,NULL,NULL,true,true,fd);
-	  int new_pid=0;
+	  pid_t new_pid=0;
 	  posix_spawn_file_actions_t action;
 	  //posix_spawnattr_t attr; //dont think any flags are relaly supported other than process group looking through gnu spawni.c code
 	  posix_spawn_file_actions_init(&action);
@@ -620,7 +626,7 @@ run_decompress_program (posix_spawn_file_actions_t * action, int fd_close_on_suc
 #ifndef _WIN32
       execvp (ws.ws_wordv[0], ws.ws_wordv);
 #else
-	  int new_pid = 0;
+	  pid_t new_pid = 0;
 	  int spawn_res = posix_spawnp(&new_pid, ws.ws_wordv[0], action, NULL, ws.ws_wordv, NULL);
 	  char* errMsg = "";
 	  char* errMsg2 = "";
@@ -908,7 +914,7 @@ sys_exec_command (char *file_name, char typechar, struct tar_stat_info *st)
   posix_spawn_file_actions_adddup2(&action, p[PREAD], STDIN_FILENO);
   stat_to_env(file_name, typechar, st); //yeah we are poluting our env but it looks like these are not used elsewhere, easier than having to o a ful lenv copy + add
   priv_set_restore_linkdir();
-  int new_pid = 0;
+  pid_t new_pid = 0;
   char* argv[2];
 
   argv[0] = (char*)to_command_option;//we cant use sh in windows to execute the command
@@ -961,12 +967,12 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
 {
   int p[2];
   static void (*saved_handler) (int sig);
-
+  pid_t pid;
   xpipe (p);
  #ifndef _WIN32
   saved_handler = signal (SIGPIPE, SIG_IGN);
 
-  pid_t pid = xfork ();
+  pid = xfork ();
 
   if (pid == 0)
   {//moved child up so we can reuse most of it for the win version, yeah poluting our own env
@@ -977,16 +983,16 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
   posix_spawn_file_actions_adddup2(&action, p[PWRITE], p[PWRITE]);
   posix_spawn_file_actions_addclose(&action, p[PREAD]);
 #endif
-	  setenv("TAR_VERSION", PACKAGE_VERSION, 1);
-	  setenv("TAR_ARCHIVE", *archive_name, 1);
-	  setenv("TAR_VOLUME", STRINGIFY_BIGINT(volume_number, uintbuf), 1);
-	  setenv("TAR_BLOCKING_FACTOR",
-		  STRINGIFY_BIGINT(blocking_factor, uintbuf), 1);
-	  setenv("TAR_SUBCOMMAND", subcommand_string(subcommand_option), 1);
-	  setenv("TAR_FORMAT",
-		  archive_format_string(current_format == DEFAULT_FORMAT ?
-			  archive_format : current_format), 1);
-	  setenv("TAR_FD", STRINGIFY_BIGINT(p[PWRITE], uintbuf), 1);
+
+  str_to_env ("TAR_VERSION", PACKAGE_VERSION);
+  str_to_env ("TAR_ARCHIVE", *archive_name);
+  dec_to_env ("TAR_VOLUME", volume_number);
+  dec_to_env ("TAR_BLOCKING_FACTOR", blocking_factor);
+  setenv ("TAR_SUBCOMMAND", subcommand_string (subcommand_option), 1);
+  setenv ("TAR_FORMAT",
+	  archive_format_string (current_format == DEFAULT_FORMAT ?
+				 archive_format : current_format), 1);
+  dec_to_env ("TAR_FD", p[PWRITE]);
 
 	  priv_set_restore_linkdir();
 #ifndef _WIN32
@@ -1037,12 +1043,6 @@ sys_exec_info_script (const char **archive_name, intmax_t volume_number)
 
       signal (SIGPIPE, saved_handler);
       return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
-
-  setenv ("TAR_VERSION", PACKAGE_VERSION, 1);
-  setenv ("TAR_ARCHIVE", *archive_name, 1);
-  setenv ("TAR_VOLUME", STRINGIFY_BIGINT (volume_number, uintbuf), 1);
-  setenv ("TAR_BLOCKING_FACTOR",
-  setenv ("TAR_FD", STRINGIFY_BIGINT (p[PWRITE], uintbuf), 1);
 }
 
 void
@@ -1050,11 +1050,12 @@ sys_exec_checkpoint_script (const char *script_name,
 			    const char *archive_name,
 			    intmax_t checkpoint_number)
 {
+  pid_t pid;
   #ifdef _WIN32
   posix_spawn_file_actions_t action;
   posix_spawn_file_actions_init(&action);
 #else
-  pid_t pid = xfork ();
+  pid = xfork ();
 
   if (pid == 0) //child first to minimize win32 dupe code and yes poluting our env
       while (waitpid (pid, &status, 0) == -1)
