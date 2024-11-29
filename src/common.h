@@ -41,7 +41,7 @@ enum
 
 
 /* Some various global definitions.  */
-
+#include <paxlib.h>
 enum
   {
     TAREXIT_SUCCESS = PAXEXIT_SUCCESS,
@@ -65,7 +65,7 @@ enum
 #include <intprops.h>
 #include <inttostr.h>
 #include <modechange.h>
-#include <paxlib.h>
+
 #include <progname.h>
 #include <quote.h>
 #include <safe-read.h>
